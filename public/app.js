@@ -3,6 +3,11 @@
 const state = {
   zones: [],
   counts: { total: 0, dstCount: 0, noDstCount: 0 },
+  groups: [],
+  ungrouped: { id: '', name: '未归组', count: 0, zones: [] },
+  activeGroup: '', // 空串表示默认组「未归组」
+  groupLimit: 50,
+  groupFormMode: '', // '' | 'create' | 'rename'
   editingId: '',
   lastConvert: null,
 };
@@ -134,10 +139,88 @@ async function loadZones() {
   renderConvertZoneOptions();
 }
 
+async function loadGroups() {
+  const payload = await request('/api/groups');
+  state.groups = payload.groups || [];
+  state.ungrouped = payload.ungrouped || { id: '', name: '未归组', count: 0, zones: [] };
+  state.groupLimit = payload.limit || 50;
+  // 当前查看的组若已被删掉，回到默认组，避免对着一个空壳页面
+  if (state.activeGroup && !state.groups.some((group) => group.id === state.activeGroup)) {
+    state.activeGroup = '';
+  }
+  renderGroupTabs();
+  renderZones();
+}
+
+function activeGroupObj() {
+  if (state.activeGroup === '') return null;
+  return state.groups.find((group) => group.id === state.activeGroup) || null;
+}
+
+// 表格只列当前组的档案；筛选条件在组内继续生效，组内顺序按服务端给的 zoneIds
+function visibleZones() {
+  const group = activeGroupObj();
+  const source = group ? group.zones : state.ungrouped.zones;
+  const dst = el('zone-filter-dst').value;
+  const keyword = el('zone-filter-keyword').value.trim().toLowerCase();
+  return source.filter((item) => {
+    if (dst === 'yes' && !item.usesDst) return false;
+    if (dst === 'no' && item.usesDst) return false;
+    if (keyword && !(
+      item.name.toLowerCase().includes(keyword)
+      || item.displayName.toLowerCase().includes(keyword)
+      || item.note.toLowerCase().includes(keyword)
+    )) return false;
+    return true;
+  });
+}
+
+function renderGroupTabs() {
+  const tabs = el('group-tabs');
+  const makeTab = (id, name, count, active) => `<button type="button" role="tab"
+      class="group-tab ${active ? 'active' : ''}"
+      data-group-tab="${escapeHtml(id)}">
+      ${escapeHtml(name)}<span class="group-count">${count}</span>
+    </button>`;
+  const html = [
+    makeTab('', state.ungrouped.name, state.ungrouped.count, state.activeGroup === ''),
+    ...state.groups.map((group) => makeTab(group.id, group.name, group.count, group.id === state.activeGroup)),
+  ].join('');
+  tabs.innerHTML = html;
+
+  const group = activeGroupObj();
+  el('group-rename').disabled = !group;
+  el('group-delete').disabled = !group;
+  el('group-sort-offset').disabled = !group || group.count === 0;
+}
+
+function groupMoveOptions(selectedId) {
+  const options = [`<option value="">${escapeHtml(state.ungrouped.name)}</option>`];
+  state.groups.forEach((group) => {
+    options.push(`<option value="${escapeHtml(group.id)}"${group.id === selectedId ? ' selected' : ''}>${escapeHtml(group.name)}</option>`);
+  });
+  return options.join('');
+}
+
 function renderZones() {
-  el('zone-counts').textContent = `共登记 ${state.counts.total} 条档案，其中实行夏令时 ${state.counts.dstCount} 条，不实行 ${state.counts.noDstCount} 条；当前筛选出 ${state.zones.length} 条`;
+  const group = activeGroupObj();
+  const groupName = group ? group.name : state.ungrouped.name;
+  const list = visibleZones();
+  const totalInGroup = group ? group.count : state.ungrouped.count;
+  el('zone-counts').textContent = `共登记 ${state.counts.total} 条档案，其中实行夏令时 ${state.counts.dstCount} 条，不实行 ${state.counts.noDstCount} 条；正在查看「${groupName}」组，组里眼下有 ${totalInGroup} 条，当前筛选出 ${list.length} 条`;
+
+  // 组内顺序按这份清单里的下标判断是否到边；未归组没有手工顺序，不显示上下移
+  const orderCell = (item) => {
+    if (!group) return '<span class="muted">—</span>';
+    const index = group.zones.findIndex((zone) => zone.id === item.id);
+    return `<span class="order-btns">
+        <button type="button" class="link" data-zone-up="${escapeHtml(item.id)}"${index === 0 ? ' disabled title="已经在最上面"' : ''}>上移</button>
+        <button type="button" class="link" data-zone-down="${escapeHtml(item.id)}"${index === group.zones.length - 1 ? ' disabled title="已经在最下面"' : ''}>下移</button>
+      </span>`;
+  };
+
   const body = el('zone-body');
-  body.innerHTML = state.zones.map((item) => `<tr>
+  body.innerHTML = list.map((item) => `<tr>
       <td class="mono">${escapeHtml(item.name)}</td>
       <td>${escapeHtml(item.displayName)}</td>
       <td class="mono">${escapeHtml(item.offsetText)}</td>
@@ -146,12 +229,17 @@ function renderZones() {
       <td class="rule-cell">${item.usesDst ? `${escapeHtml(ruleText(item.dstStart))} 起，${escapeHtml(ruleText(item.dstEnd))} 止` : '—'}</td>
       <td class="mono">${escapeHtml(item.yearRangeText)}</td>
       <td class="note-cell">${escapeHtml(item.note)}</td>
+      <td class="actions">${orderCell(item)}</td>
+      <td><select class="group-move" data-zone-move="${escapeHtml(item.id)}" title="移动到其他分组">${groupMoveOptions(group ? group.id : '')}</select></td>
       <td class="actions">
         <button type="button" class="link" data-zone-edit="${escapeHtml(item.id)}">编辑</button>
         <button type="button" class="link danger" data-zone-delete="${escapeHtml(item.id)}">删除</button>
       </td>
     </tr>`).join('');
-  el('zone-empty').classList.toggle('hidden', state.zones.length > 0);
+  el('zone-empty').classList.toggle('hidden', list.length > 0);
+  el('zone-empty').textContent = totalInGroup === 0
+    ? `「${groupName}」组里眼下没有档案`
+    : '当前筛选条件下没有时区档案';
 }
 
 function renderConvertZoneOptions() {
@@ -239,7 +327,7 @@ async function submitZone(event) {
       notify('时区档案已新增', 'ok');
     }
     closeZoneForm();
-    await loadZones();
+    await Promise.all([loadZones(), loadGroups()]);
   } catch (err) {
     notify(err.message, 'error');
     markField(err.field);
@@ -285,29 +373,166 @@ document.addEventListener('click', async (event) => {
   const node = event.target.closest('button');
   if (!node) return;
 
+  if (node.dataset.groupTab !== undefined) {
+    clearNotice();
+    state.activeGroup = node.dataset.groupTab;
+    renderGroupTabs();
+    renderZones();
+    return;
+  }
+
+  if (node.dataset.zoneUp !== undefined || node.dataset.zoneDown !== undefined) {
+    const group = activeGroupObj();
+    if (!group) return;
+    clearNotice();
+    const zoneId = node.dataset.zoneUp !== undefined ? node.dataset.zoneUp : node.dataset.zoneDown;
+    try {
+      await request(`/api/groups/${encodeURIComponent(group.id)}/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ zoneId, direction: node.dataset.zoneUp !== undefined ? 'up' : 'down' }),
+      });
+      await loadGroups();
+    } catch (err) {
+      notify(err.message, 'error');
+    }
+    return;
+  }
+
   if (node.dataset.zoneEdit) {
     clearNotice();
-    const found = state.zones.find((item) => item.id === node.dataset.zoneEdit);
+    const found = allZonesFlat().find((item) => item.id === node.dataset.zoneEdit);
     if (found) openZoneForm(found);
     return;
   }
 
   if (node.dataset.zoneDelete) {
     clearNotice();
-    const found = state.zones.find((item) => item.id === node.dataset.zoneDelete);
-    if (!window.confirm(`确定删除 ${found ? found.name : ''} 这条档案吗？`)) return;
+    const found = allZonesFlat().find((item) => item.id === node.dataset.zoneDelete);
+    if (!window.confirm(`确定删除 ${found ? found.name : ''} 这条档案吗？删除后它也会从所在分组里消失。`)) return;
     try {
       await request(`/api/zones/${encodeURIComponent(node.dataset.zoneDelete)}`, { method: 'DELETE' });
       if (state.editingId === node.dataset.zoneDelete) closeZoneForm();
       notify('时区档案已删除', 'ok');
-      await loadZones();
+      await Promise.all([loadZones(), loadGroups()]);
     } catch (err) {
       notify(err.message, 'error');
     }
   }
 });
 
+// 编辑按钮拿到的档案可能在任何一个组里，把所有组拍平成一份清单来找
+function allZonesFlat() {
+  const map = new Map();
+  state.ungrouped.zones.forEach((zone) => map.set(zone.id, zone));
+  state.groups.forEach((group) => group.zones.forEach((zone) => map.set(zone.id, zone)));
+  return [...map.values()];
+}
+
+// 每行的「移动分组」下拉：一改就跨组移动，提示语写清从哪个组移到哪个组
+document.addEventListener('change', async (event) => {
+  const select = event.target.closest('select[data-zone-move]');
+  if (!select) return;
+  const zoneId = select.dataset.zoneMove;
+  const targetGroupId = select.value;
+  try {
+    const result = await request('/api/groups/assign', {
+      method: 'POST',
+      body: JSON.stringify({ zoneId, groupId: targetGroupId }),
+    });
+    if (result.moved) {
+      notify(`已把 ${result.zone.name} 从「${result.fromGroupName}」移到「${result.toGroupName}」`, 'ok');
+    }
+    await Promise.all([loadZones(), loadGroups()]);
+  } catch (err) {
+    notify(err.message, 'error');
+    // 移动没成（例如目标组满了）时把下拉还原到当前组
+    renderZones();
+  }
+});
+
 el('zone-form').addEventListener('submit', submitZone);
+
+function openGroupForm(mode) {
+  const group = activeGroupObj();
+  state.groupFormMode = mode;
+  el('group-name-caption').textContent = mode === 'rename' ? '新的分组名称' : '分组名称';
+  el('group-name').value = mode === 'rename' && group ? group.name : '';
+  el('group-form').classList.remove('hidden');
+  el('group-name').focus();
+}
+
+function closeGroupForm() {
+  state.groupFormMode = '';
+  el('group-form').classList.add('hidden');
+  el('group-name').value = '';
+  clearFieldMarks();
+}
+
+async function submitGroupName(event) {
+  event.preventDefault();
+  clearNotice();
+  clearFieldMarks();
+  const name = el('group-name').value;
+  const group = activeGroupObj();
+  try {
+    if (state.groupFormMode === 'rename' && group) {
+      await request(`/api/groups/${encodeURIComponent(group.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      });
+      notify('分组已重命名', 'ok');
+    } else {
+      await request('/api/groups', { method: 'POST', body: JSON.stringify({ name }) });
+      notify('分组已新建，档案可以用行尾的「移动分组」挪进来', 'ok');
+    }
+    closeGroupForm();
+    await loadGroups();
+  } catch (err) {
+    notify(err.message, 'error');
+    markField(err.field);
+  }
+}
+
+el('group-form').addEventListener('submit', submitGroupName);
+el('group-form-cancel').addEventListener('click', closeGroupForm);
+el('group-new').addEventListener('click', () => {
+  clearNotice();
+  openGroupForm('create');
+});
+el('group-rename').addEventListener('click', () => {
+  clearNotice();
+  openGroupForm('rename');
+});
+el('group-delete').addEventListener('click', async () => {
+  const group = activeGroupObj();
+  if (!group) return;
+  clearNotice();
+  if (!window.confirm(`确定删除分组「${group.name}」吗？组里 ${group.count} 条档案不会被删，会全部回到「未归组」。`)) return;
+  try {
+    await request(`/api/groups/${encodeURIComponent(group.id)}`, { method: 'DELETE' });
+    state.activeGroup = '';
+    notify(`分组「${group.name}」已删除，组内档案已回到未归组`, 'ok');
+    await Promise.all([loadZones(), loadGroups()]);
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+});
+el('group-sort-offset').addEventListener('click', async () => {
+  const group = activeGroupObj();
+  if (!group || group.count === 0) return;
+  clearNotice();
+  // 页面上一直挂着文字提示，点按钮时再用确认框把"会盖掉手工顺序"讲清楚一次
+  const ok = window.confirm(`将把「${group.name}」组的 ${group.count} 条档案按标准偏移从小到大重排。这会盖掉组内原来的手工上移下移顺序，确定继续吗？`);
+  if (!ok) return;
+  try {
+    await request(`/api/groups/${encodeURIComponent(group.id)}/sort-by-offset`, { method: 'POST' });
+    notify(`「${group.name}」已按偏移从小到大重排`, 'ok');
+    await loadGroups();
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+});
+
 el('zone-new').addEventListener('click', () => {
   clearNotice();
   openZoneForm(null);
@@ -334,7 +559,7 @@ el('operator').addEventListener('change', () => {
   window.localStorage.setItem(OPERATOR_KEY, currentOperator());
 });
 
-// 页面打开时先把档案拉一遍，换算台的来源时区下拉按这份清单填
+// 页面打开时先把档案与分组各拉一遍，换算台的来源时区下拉按档案清单填
 fillOptions();
 restoreOperator();
 loadHealth();
@@ -342,3 +567,4 @@ const now = new Date();
 el('convert-date').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 el('convert-time').value = '09:30';
 loadZones().catch((err) => notify(err.message, 'error'));
+loadGroups().catch((err) => notify(err.message, 'error'));

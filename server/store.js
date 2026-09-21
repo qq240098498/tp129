@@ -14,6 +14,8 @@ const MAX_YEAR = 2100;
 const MAX_NAME_LENGTH = 40;
 const MAX_DISPLAY_NAME_LENGTH = 40;
 const MAX_NOTE_LENGTH = 200;
+const MAX_GROUP_NAME_LENGTH = 20;
+const MAX_ZONES_PER_GROUP = 50;
 
 // 时区档案的初始数据。十条档案里有带半小时与三刻偏移的、有南半球跨年实行夏令时的、
 // 有已经停止实行夏令时但保留生效年份区间的，也有完全不实行夏令时的
@@ -134,6 +136,37 @@ function normalizeZone(item, fallbackIndex) {
   };
 }
 
+// 单个常用组的固定结构：组名去空白，组内顺序是一份档案 id 清单
+function normalizeGroup(item, fallbackIndex, existingIds, validZoneIds) {
+  const source = item && typeof item === 'object' ? item : {};
+  const name = typeof source.name === 'string' ? source.name.trim() : '';
+  if (!name) return null;
+
+  const rawIds = Array.isArray(source.zoneIds) ? source.zoneIds : [];
+  const seen = new Set();
+  const zoneIds = [];
+  rawIds.forEach((rawId) => {
+    const zoneId = typeof rawId === 'string' ? rawId : '';
+    // 组内重复登记的档案只保留第一次出现，档案不存在或已删除的引用直接丢掉
+    if (!zoneId || seen.has(zoneId) || !validZoneIds.has(zoneId)) return;
+    seen.add(zoneId);
+    zoneIds.push(zoneId);
+  });
+
+  const createdAt = typeof source.createdAt === 'string' && source.createdAt
+    ? source.createdAt
+    : new Date().toISOString();
+  return {
+    id: typeof source.id === 'string' && source.id && !existingIds.has(source.id)
+      ? source.id
+      : `group-restored-${fallbackIndex + 1}`,
+    name,
+    zoneIds,
+    createdAt,
+    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+  };
+}
+
 // 整份数据保证结构一致，缺名称、缺显示名的档案一律丢掉，名称重复的只留第一条
 function normalize(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
@@ -152,7 +185,24 @@ function normalize(raw) {
     zones.push(zone);
   });
 
-  return { zones };
+  // 常用组：组名不能为空、不能重复；引用的档案必须还在。
+  // 被丢掉的引用不会删除档案本身，那些档案自然落在未归组默认组里
+  const validZoneIds = new Set(zones.map((zone) => zone.id));
+  const groupIds = new Set();
+  const groupNames = new Set();
+  const groups = [];
+  const rawGroups = Array.isArray(source.groups) ? source.groups : [];
+  rawGroups.forEach((item, index) => {
+    const group = normalizeGroup(item, index, groupIds, validZoneIds);
+    if (!group) return;
+    const lower = group.name.toLowerCase();
+    if (groupIds.has(group.id) || groupNames.has(lower)) return;
+    groupIds.add(group.id);
+    groupNames.add(lower);
+    groups.push(group);
+  });
+
+  return { zones, groups };
 }
 
 // 读取数据文件：文件缺失或内容损坏时回落到初始数据并立刻补写
@@ -161,7 +211,7 @@ function load() {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
     return normalize(JSON.parse(raw));
   } catch (err) {
-    const data = { zones: seedZones() };
+    const data = { zones: seedZones(), groups: [] };
     save(data);
     return data;
   }
@@ -191,5 +241,7 @@ module.exports = {
   MAX_NAME_LENGTH,
   MAX_DISPLAY_NAME_LENGTH,
   MAX_NOTE_LENGTH,
+  MAX_GROUP_NAME_LENGTH,
+  MAX_ZONES_PER_GROUP,
   DATA_FILE,
 };

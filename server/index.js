@@ -52,6 +52,62 @@ app.delete('/api/zones/:id', (req, res) => {
   }
 });
 
+// 常用组：组清单含每组条数与默认组「未归组」
+app.get('/api/groups', (_req, res) => {
+  res.json(api.listGroups());
+});
+
+app.post('/api/groups', (req, res) => {
+  try {
+    res.status(201).json(api.createGroup(req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 跨组移动一条档案：目标组写在请求体里，给空串表示退回未归组
+app.post('/api/groups/assign', (req, res) => {
+  try {
+    res.json(api.assignZone(req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.patch('/api/groups/:id', (req, res) => {
+  try {
+    res.json(api.renameGroup(req.params.id, req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.delete('/api/groups/:id', (req, res) => {
+  try {
+    res.json(api.deleteGroup(req.params.id));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 组内手工上移下移
+app.post('/api/groups/:id/reorder', (req, res) => {
+  try {
+    res.json(api.reorderZone(req.params.id, req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 整组按偏移从小到大重排，会盖掉组内原来的手工顺序
+app.post('/api/groups/:id/sort-by-offset', (req, res) => {
+  try {
+    res.json(api.sortGroupByOffset(req.params.id));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 // 换算：给一个时刻与来源时区，列出各时区对应的当地时刻
 app.post('/api/convert', (req, res) => {
   try {

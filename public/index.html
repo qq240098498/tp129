@@ -40,6 +40,23 @@
         </div>
       </div>
       <p class="counts" id="zone-counts"></p>
+      <div class="group-bar">
+        <div class="group-tabs" id="group-tabs" role="tablist"></div>
+        <div class="group-tools">
+          <button type="button" id="group-new">新建分组</button>
+          <button type="button" id="group-rename" class="ghost">重命名本组</button>
+          <button type="button" id="group-delete" class="ghost">删除本组</button>
+          <button type="button" id="group-sort-offset" class="ghost">按偏移重排本组</button>
+        </div>
+      </div>
+      <p class="group-hint" id="group-sort-hint">提示：按偏移重排会把本组档案按标准偏移从小到大排一遍，这一下会盖掉组内原来用「上移／下移」排好的手工顺序。</p>
+      <form class="group-form hidden" id="group-form" autocomplete="off">
+        <label data-field="groupName" id="group-name-label"><span id="group-name-caption">分组名称</span>
+          <input id="group-name" placeholder="自己取一个，例如「常看」「欧洲线」" maxlength="20">
+        </label>
+        <button type="submit">保存分组名</button>
+        <button type="button" id="group-form-cancel" class="ghost">取消</button>
+      </form>
       <div class="table-wrap">
         <table class="grid">
           <thead>
@@ -52,6 +69,8 @@
               <th>切换规则</th>
               <th>生效年份</th>
               <th>备注</th>
+              <th>组内顺序</th>
+              <th>移动分组</th>
               <th>操作</th>
             </tr>
           </thead>

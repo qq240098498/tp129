@@ -374,3 +374,109 @@ label.full input {
   display: flex;
   gap: 10px;
 }
+
+/* 常用组的标签栏与管理按钮 */
+.group-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.group-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.group-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.group-tab.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.group-tab:disabled {
+  opacity: 0.6;
+}
+
+.group-count {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #eef0f3;
+  color: var(--ink-soft);
+  font-size: 11px;
+  text-align: center;
+}
+
+.group-tab.active .group-count {
+  background: var(--accent);
+  color: #fff;
+}
+
+.group-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.group-tools button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.group-hint {
+  margin: 0 0 10px;
+  color: #8a5a00;
+  font-size: 12px;
+}
+
+.group-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.group-form label {
+  min-width: 280px;
+}
+
+.order-btns {
+  display: inline-flex;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+button.link:disabled {
+  color: #b6bfc9;
+  cursor: not-allowed;
+}
+
+.muted {
+  color: #b6bfc9;
+}
+
+select.group-move {
+  padding: 3px 6px;
+  font-size: 12px;
+  max-width: 130px;
+}
