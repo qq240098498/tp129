@@ -14,6 +14,12 @@ const MAX_YEAR = 2100;
 const MAX_NAME_LENGTH = 40;
 const MAX_DISPLAY_NAME_LENGTH = 40;
 const MAX_NOTE_LENGTH = 200;
+// 分组相关：默认组（未分组）不落在数据里，永远排在最前；单个组的条数在这里管住
+const DEFAULT_GROUP_ID = 'default';
+const DEFAULT_GROUP_NAME = '未分组';
+const MAX_GROUP_NAME_LENGTH = 20;
+const MAX_GROUPS = 20;
+const MAX_ZONES_PER_GROUP = 50;
 
 // 时区档案的初始数据。十条档案里有带半小时与三刻偏移的、有南半球跨年实行夏令时的、
 // 有已经停止实行夏令时但保留生效年份区间的，也有完全不实行夏令时的
@@ -134,7 +140,33 @@ function normalizeZone(item, fallbackIndex) {
   };
 }
 
-// 整份数据保证结构一致，缺名称、缺显示名的档案一律丢掉，名称重复的只留第一条
+// 把单个分组整理成固定结构：组名去空白，档案顺序只保留还存在的编号
+function normalizeGroup(item, index, validZoneIds) {
+  const source = item && typeof item === 'object' ? item : {};
+  const rawIds = Array.isArray(source.zoneIds) ? source.zoneIds : [];
+  const seen = new Set();
+  const zoneIds = [];
+  rawIds.forEach((rawId) => {
+    const id = typeof rawId === 'string' ? rawId : '';
+    // 一条档案只能落在一个组里，重复出现的编号只认第一次；已经不存在的档案直接丢弃
+    if (!id || seen.has(id) || !validZoneIds.has(id)) return;
+    seen.add(id);
+    zoneIds.push(id);
+  });
+  const createdAt = typeof source.createdAt === 'string' && source.createdAt ? source.createdAt : new Date().toISOString();
+  return {
+    id: typeof source.id === 'string' && source.id && source.id !== DEFAULT_GROUP_ID
+      ? source.id
+      : `group-restored-${index + 1}`,
+    name: typeof source.name === 'string' ? source.name.trim() : '',
+    zoneIds,
+    createdAt,
+    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+  };
+}
+
+// 整份数据保证结构一致：缺名称、缺显示名的档案一律丢掉，名称重复的只留第一条；
+// 分组同样去重——同一条档案出现在多个组时只保留最先出现的那一处，其余自动回到未分组
 function normalize(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const rawZones = Array.isArray(source.zones) ? source.zones : seedZones();
@@ -152,7 +184,28 @@ function normalize(raw) {
     zones.push(zone);
   });
 
-  return { zones };
+  const rawGroups = Array.isArray(source.groups) ? source.groups : [];
+  const seenGroupIds = new Set();
+  const seenGroupNames = new Set();
+  const claimedZones = new Set();
+  const groups = [];
+  rawGroups.forEach((item, index) => {
+    // 默认组是虚拟的、不落在数据里；数据里若混进同编号记录一律丢弃
+    if (item && typeof item === 'object' && item.id === DEFAULT_GROUP_ID) return;
+    const group = normalizeGroup(item, index, seenIds);
+    if (!group.id || !group.name || seenGroupIds.has(group.id) || seenGroupNames.has(group.name.toLowerCase())) return;
+    // 跨组去重：前面的组已经收走的档案不再进入这个组
+    group.zoneIds = group.zoneIds.filter((id) => {
+      if (claimedZones.has(id)) return false;
+      claimedZones.add(id);
+      return true;
+    });
+    seenGroupIds.add(group.id);
+    seenGroupNames.add(group.name.toLowerCase());
+    groups.push(group);
+  });
+
+  return { zones, groups };
 }
 
 // 读取数据文件：文件缺失或内容损坏时回落到初始数据并立刻补写
@@ -161,7 +214,7 @@ function load() {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
     return normalize(JSON.parse(raw));
   } catch (err) {
-    const data = { zones: seedZones() };
+    const data = { zones: seedZones(), groups: [] };
     save(data);
     return data;
   }
@@ -181,6 +234,7 @@ module.exports = {
   seedZones,
   normalize,
   normalizeZone,
+  normalizeGroup,
   normalizeRulePart,
   WEEKDAY_NAMES,
   MONTH_NAMES,
@@ -191,5 +245,10 @@ module.exports = {
   MAX_NAME_LENGTH,
   MAX_DISPLAY_NAME_LENGTH,
   MAX_NOTE_LENGTH,
+  DEFAULT_GROUP_ID,
+  DEFAULT_GROUP_NAME,
+  MAX_GROUP_NAME_LENGTH,
+  MAX_GROUPS,
+  MAX_ZONES_PER_GROUP,
   DATA_FILE,
 };

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
-const { load, save, MIN_OFFSET, MAX_OFFSET, MIN_YEAR, MAX_YEAR, MAX_NAME_LENGTH, MAX_DISPLAY_NAME_LENGTH, MAX_NOTE_LENGTH } = require('./store');
+const { load, save, MIN_OFFSET, MAX_OFFSET, MIN_YEAR, MAX_YEAR, MAX_NAME_LENGTH, MAX_DISPLAY_NAME_LENGTH, MAX_NOTE_LENGTH, DEFAULT_GROUP_ID } = require('./store');
 const { ApiError, pickText } = require('./errors');
+const { removeZoneFromGroups } = require('./groups');
 
 // 时区名固定成地区加城市的写法，UTC 单独允许
 const NAME_PATTERN = /^([A-Za-z_]+(\/[A-Za-z_]+)+|UTC)$/;
@@ -146,9 +147,10 @@ function offsetText(minutes) {
   return `UTC${sign}${hour}:${minute}`;
 }
 
-function withOffsetText(zone) {
+function withOffsetText(zone, groupId) {
   return {
     ...zone,
+    groupId: groupId || DEFAULT_GROUP_ID,
     offsetText: offsetText(zone.offsetMinutes),
     dstOffsetText: zone.usesDst && zone.dstOffsetMinutes !== null ? offsetText(zone.dstOffsetMinutes) : '',
     yearRangeText: zone.toYear === null ? `${zone.fromYear} 年起` : `${zone.fromYear} 至 ${zone.toYear}`,
@@ -162,27 +164,59 @@ function sortZones(list) {
   });
 }
 
-// 档案清单：按是否实行夏令时筛选，再按名称、显示名或备注搜索
+function matchesFilters(zone, dst, keyword) {
+  if (dst === 'yes' && !zone.usesDst) return false;
+  if (dst === 'no' && zone.usesDst) return false;
+  if (keyword) {
+    return zone.name.toLowerCase().includes(keyword)
+      || zone.displayName.toLowerCase().includes(keyword)
+      || zone.note.toLowerCase().includes(keyword);
+  }
+  return true;
+}
+
+// 档案清单：可限定在某个分组内查看。自定义组按组内手工顺序返回，默认组与全部视角按偏移排序
 function listZones(options) {
   const input = options && typeof options === 'object' ? options : {};
   const dst = pickText(input.dst);
   const keyword = pickText(input.keyword).toLowerCase();
+  const groupId = pickText(input.groupId);
   const data = load();
 
-  let list = data.zones;
-  if (dst === 'yes') list = list.filter((item) => item.usesDst);
-  if (dst === 'no') list = list.filter((item) => !item.usesDst);
-  if (keyword) {
-    list = list.filter((item) => item.name.toLowerCase().includes(keyword)
-      || item.displayName.toLowerCase().includes(keyword)
-      || item.note.toLowerCase().includes(keyword));
+  let scoped;
+  let scopeName = '';
+  if (groupId) {
+    if (groupId === DEFAULT_GROUP_ID) {
+      const claimed = new Set();
+      data.groups.forEach((group) => group.zoneIds.forEach((id) => claimed.add(id)));
+      // 默认组没有手工顺序，统一按偏移从小到大排
+      scoped = sortZones(data.zones.filter((zone) => !claimed.has(zone.id)));
+      scopeName = '未分组';
+    } else {
+      const group = data.groups.find((item) => item.id === groupId);
+      if (!group) throw new ApiError(404, 'GROUP_NOT_FOUND', '这个分组不存在，可能已被删除', 'groupId');
+      const byId = new Map(data.zones.map((zone) => [zone.id, zone]));
+      scoped = group.zoneIds.map((id) => byId.get(id)).filter(Boolean);
+      scopeName = group.name;
+    }
+    scoped = scoped.filter((zone) => matchesFilters(zone, dst, keyword));
+  } else {
+    scoped = data.zones.filter((zone) => matchesFilters(zone, dst, keyword));
+    scoped = sortZones(scoped);
   }
 
+  const ownerOf = new Map();
+  data.groups.forEach((group) => {
+    group.zoneIds.forEach((id) => ownerOf.set(id, group.id));
+  });
+
   return {
-    zones: sortZones(list).map(withOffsetText),
+    zones: scoped.map((zone) => withOffsetText(zone, ownerOf.get(zone.id) || DEFAULT_GROUP_ID)),
     total: data.zones.length,
     dstCount: data.zones.filter((item) => item.usesDst).length,
     noDstCount: data.zones.filter((item) => !item.usesDst).length,
+    groupId: groupId || '',
+    groupName: scopeName,
   };
 }
 
@@ -190,7 +224,8 @@ function getZone(id) {
   const data = load();
   const found = data.zones.find((item) => item.id === id);
   if (!found) throw new ApiError(404, 'ZONE_NOT_FOUND', '这条时区档案不存在或已被删除', '');
-  return withOffsetText(found);
+  const owner = data.groups.find((group) => group.zoneIds.includes(id));
+  return withOffsetText(found, owner ? owner.id : DEFAULT_GROUP_ID);
 }
 
 function createZone(payload) {
@@ -200,8 +235,9 @@ function createZone(payload) {
   const now = new Date().toISOString();
   const created = { id: crypto.randomUUID(), ...checked, createdAt: now, updatedAt: now };
   data.zones.push(created);
+  // 新档案默认不归属任何常用组，先出现在未分组里，不会凭空消失
   save(data);
-  return withOffsetText(created);
+  return withOffsetText(created, DEFAULT_GROUP_ID);
 }
 
 function updateZone(id, payload) {
@@ -227,7 +263,8 @@ function updateZone(id, payload) {
   Object.assign(found, checked);
   found.updatedAt = new Date().toISOString();
   save(data);
-  return withOffsetText(found);
+  const owner = data.groups.find((group) => group.zoneIds.includes(id));
+  return withOffsetText(found, owner ? owner.id : DEFAULT_GROUP_ID);
 }
 
 function deleteZone(id) {
@@ -235,6 +272,8 @@ function deleteZone(id) {
   const index = data.zones.findIndex((item) => item.id === id);
   if (index === -1) throw new ApiError(404, 'ZONE_NOT_FOUND', '这条时区档案不存在或已被删除', '');
   const [removed] = data.zones.splice(index, 1);
+  // 档案删掉的同时把它从所有组的顺序里摘掉，组内不会留下空编号
+  removeZoneFromGroups(data, id);
   save(data);
   return { id: removed.id, name: removed.name, displayName: removed.displayName };
 }

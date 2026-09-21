@@ -14,10 +14,15 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/api/zones', (req, res) => {
-  res.json(api.listZones({
-    dst: api.readQuery(req.query, 'dst'),
-    keyword: api.readQuery(req.query, 'keyword'),
-  }));
+  try {
+    res.json(api.listZones({
+      dst: api.readQuery(req.query, 'dst'),
+      keyword: api.readQuery(req.query, 'keyword'),
+      groupId: api.readQuery(req.query, 'groupId'),
+    }));
+  } catch (err) {
+    sendError(res, err);
+  }
 });
 
 app.post('/api/zones', (req, res) => {
@@ -47,6 +52,61 @@ app.patch('/api/zones/:id', (req, res) => {
 app.delete('/api/zones/:id', (req, res) => {
   try {
     res.json(api.deleteZone(req.params.id));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 常用分组：清单、建组、改名、删组
+app.get('/api/groups', (_req, res) => {
+  res.json(api.listGroups());
+});
+
+app.post('/api/groups', (req, res) => {
+  try {
+    res.status(201).json(api.createGroup(req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.patch('/api/groups/:id', (req, res) => {
+  try {
+    res.json(api.renameGroup(req.params.id, req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.delete('/api/groups/:id', (req, res) => {
+  try {
+    res.json(api.deleteGroup(req.params.id));
+  }
+  catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 档案归属与组内顺序：跨组移动、上移下移、整组按偏移重排
+app.post('/api/groups/assign', (req, res) => {
+  try {
+    res.json(api.setZoneGroup(req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.post('/api/groups/order', (req, res) => {
+  try {
+    res.json(api.shiftZoneOrder(req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.post('/api/groups/sort', (req, res) => {
+  try {
+    res.json(api.sortGroupByOffset(req.body));
   } catch (err) {
     sendError(res, err);
   }

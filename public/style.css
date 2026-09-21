@@ -203,6 +203,127 @@ button.link.danger {
   font-size: 12.5px;
 }
 
+/* 分组标签栏：每个标签把组名与眼下条数写在一起，未分组永远在最前 */
+.group-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.group-tab {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
+.group-tab:hover {
+  border-color: var(--accent);
+}
+
+.group-tab.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.group-add {
+  padding: 5px 12px;
+  border-radius: 14px;
+  font-size: 12.5px;
+}
+
+.group-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f9fafc;
+  font-size: 12.5px;
+}
+
+.group-bar:empty {
+  display: none;
+}
+
+.group-bar-name {
+  font-weight: 600;
+}
+
+.group-bar-info {
+  color: var(--ink-soft);
+}
+
+.group-bar-warn {
+  flex-basis: 100%;
+  color: #8a5a00;
+  font-size: 12px;
+}
+
+.group-bar button {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.danger-text {
+  color: var(--danger) !important;
+}
+
+.group-form {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.group-form h3 {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.group-form label {
+  min-width: 220px;
+  flex: 1;
+}
+
+.group-form-hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.move-select {
+  max-width: 130px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.order-cell {
+  display: flex;
+  gap: 2px;
+}
+
+button.link:disabled {
+  color: #b6bfc9;
+  cursor: not-allowed;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -210,7 +331,7 @@ button.link.danger {
 table.grid {
   width: 100%;
   border-collapse: collapse;
-  min-width: 980px;
+  min-width: 1180px;
 }
 
 table.grid th,

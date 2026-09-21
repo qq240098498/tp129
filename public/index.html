@@ -40,6 +40,22 @@
         </div>
       </div>
       <p class="counts" id="zone-counts"></p>
+
+      <div class="group-tabs" id="group-tabs">
+        <button type="button" id="group-new" class="ghost group-add">＋ 新建分组</button>
+      </div>
+      <div class="group-bar" id="group-bar"></div>
+
+      <form class="group-form hidden" id="group-form" autocomplete="off">
+        <h3 id="group-form-title">新建分组</h3>
+        <label data-field="name">分组名称<input id="group-name-input" placeholder="自己取一个，例如 亚太办公室" maxlength="20"></label>
+        <div class="form-actions">
+          <button type="submit">保存分组</button>
+          <button type="button" id="group-cancel" class="ghost">取消</button>
+        </div>
+        <p class="group-form-hint">组名不能为空、不能与已有分组重名，最长 20 个字符</p>
+      </form>
+
       <div class="table-wrap">
         <table class="grid">
           <thead>
@@ -52,6 +68,8 @@
               <th>切换规则</th>
               <th>生效年份</th>
               <th>备注</th>
+              <th>组内顺序</th>
+              <th>移到分组</th>
               <th>操作</th>
             </tr>
           </thead>
